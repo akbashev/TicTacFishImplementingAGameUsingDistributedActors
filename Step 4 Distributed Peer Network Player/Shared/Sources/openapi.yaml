@@ -1,0 +1,242 @@
+openapi: 3.1.0
+info:
+  title: TicTacToe API
+  version: 1.0.0
+servers:
+  - url: 'http://localhost:8080'
+paths:
+  /matchmaking:
+    post:
+      operationId: connectToLobby
+      summary: Subscribe to lobby updates
+      parameters:
+        - in: header
+          name: player_id
+          schema:
+            type: string
+            format: uuid
+          required: true
+        - in: header
+          name: player_name
+          schema:
+            type: string
+          required: true
+        - in: header
+          name: player_team
+          schema:
+            type: string
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/jsonl:
+            schema:
+              $ref: '#/components/schemas/PlayerLobbyMessage'
+      responses:
+        '200':
+          description: A stream of lobby updates
+          content:
+            application/jsonl:
+              schema:
+                $ref: '#/components/schemas/LobbyMessage'
+  /game:
+    post:
+      operationId: joinGameSession
+      summary: Subscribe to game session updates
+      parameters:
+        - in: header
+          name: player_id
+          schema:
+            type: string
+            format: uuid
+          required: true
+        - in: header
+          name: player_name
+          schema:
+            type: string
+          required: true
+        - in: header
+          name: player_team
+          schema:
+            type: string
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/jsonl:
+            schema:
+              $ref: '#/components/schemas/PlayerSessionMessage'
+      responses:
+        '200':
+          description: A stream of session updates
+          content:
+            application/jsonl:
+              schema:
+                $ref: '#/components/schemas/SessionMessage'
+components:
+  schemas:
+    PlayerLobbyMessage:
+      type: object
+      properties:
+        message:
+          oneOf:
+            - $ref: '#/components/schemas/PlayerStatusUpdate'
+            - $ref: '#/components/schemas/Heartbeat'
+      required:
+        - message
+    LobbyMessage:
+      type: object
+      properties:
+        message:
+          oneOf:
+            - $ref: '#/components/schemas/PlayerStatusUpdate'
+            - $ref: '#/components/schemas/SessionStatusUpdate'
+            - $ref: '#/components/schemas/LobbyState'
+      required:
+        - message
+    PlayerSessionMessage:
+      type: object
+      properties:
+        message:
+          oneOf:
+            - $ref: '#/components/schemas/GameMove'
+            - $ref: '#/components/schemas/Heartbeat'
+      required:
+        - message
+    SessionMessage:
+      type: object
+      properties:
+        message:
+          oneOf:
+            - $ref: '#/components/schemas/GameMove'
+      required:
+        - message
+    PlayerStatusUpdate:
+      type: object
+      properties:
+        player:
+          $ref: '#/components/schemas/Player'
+        status:
+          type: string
+          enum:
+            - connect
+            - ready
+            - disconnect
+      required:
+        - status
+        - player
+    SessionStatusUpdate:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - started
+            - finished
+        game:
+          $ref: '#/components/schemas/GameState'
+      required:
+        - type
+        - game
+    Player:
+      type: object
+      properties:
+        playerId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        team:
+          $ref: '#/components/schemas/Team'
+      required:
+        - playerId
+        - name
+        - team
+    Team:
+      type: string
+      enum:
+        - fish
+        - rodents
+    GameState:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        playerOne:
+          $ref: '#/components/schemas/Player'
+        playerTwo:
+          $ref: '#/components/schemas/Player'
+        result:
+          $ref: '#/components/schemas/GameResult'
+        currentPlayerId:
+          type: string
+          format: uuid
+        moves:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameMove'
+      required:
+        - sessionId
+        - playerOne
+        - playerTwo
+        - currentPlayerId
+        - moves
+    GameMove:
+      type: object
+      properties:
+        playerId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+          minimum: 0
+          maximum: 8
+        team:
+          $ref: '#/components/schemas/Team'
+        teamCharacterId:
+          type: integer
+          minimum: 0
+          maximum: 2
+      required:
+        - playerId
+        - position
+        - team
+        - teamCharacterId
+    GameResult:
+      type: object
+      properties:
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/Win'
+            - $ref: '#/components/schemas/Draw'
+    LobbyState:
+      type: object
+      properties:
+        waitingPlayers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+        readyPlayers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+        completedSessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameState'
+      required:
+        - waitingPlayers
+        - readyPlayers
+        - completedSessions
+    Draw:
+      type: object
+    Win:
+      type: object
+      properties:
+        player:
+          $ref: '#/components/schemas/Player'
+      required:
+        - player
+    Heartbeat:
+      type: object
