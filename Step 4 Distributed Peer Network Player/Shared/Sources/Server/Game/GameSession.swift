@@ -69,6 +69,7 @@ distributed public actor GameSession: EventSourced {
     public init(
         actorSystem: ClusterSystem,
         lobby: GameLobby,
+        sessionId: UUID,
         playerOne: NetworkPlayer,
         playerTwo: NetworkPlayer
     ) async throws {
@@ -76,7 +77,6 @@ distributed public actor GameSession: EventSourced {
         self.lobby = lobby
         self.playerOne = playerOne
         self.playerTwo = playerTwo
-        let sessionId = UUID()
         let playerOneInfo = try await playerOne.getInfo()
         let playerTwoInfo = try await playerTwo.getInfo()
         let currentPlayer = [playerOneInfo, playerTwoInfo].randomElement()!

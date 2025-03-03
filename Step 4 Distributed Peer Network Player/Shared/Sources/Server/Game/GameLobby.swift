@@ -7,13 +7,17 @@
 import Distributed
 import DistributedCluster
 import Types
+import EventSourcing
+import struct Foundation.UUID
 
-distributed public actor GameLobby: ClusterSingleton {
+distributed public actor GameLobby: ClusterSingleton, EventSourced {
     
     public typealias ActorSystem = ClusterSystem
     
+    public distributed var persistenceID: EventSourcing.PersistenceID { "matchmaking_lobby" }
+    
     /// In progress sessions
-    var gameSessions: Set<GameSession> = []
+    var gameSessions: Set<String> = []
     /// Completed sessions
     var completedSessions: [GameState] = []
     /// Players waiting for a game session
@@ -22,6 +26,15 @@ distributed public actor GameLobby: ClusterSingleton {
     var readyPlayers: Set<NetworkPlayer> = []
     
     var findOpponentTasks: [PlayerIdentity: Task<Void, any Swift.Error>] = [:]
+    
+    public enum Event: Codable, Sendable {
+        case sessionEvent(SessionEvent)
+    }
+    
+    public enum SessionEvent: Codable, Sendable {
+        case started(GameState)
+        case ended(GameState)
+    }
     
     enum PlayerStatusChanged: Codable, Sendable {
         case joined
@@ -48,6 +61,19 @@ distributed public actor GameLobby: ClusterSingleton {
         try await self.findOpponent(for: player, info: player.getInfo())
     }
     
+    public func handleEvent(_ event: Event) {
+        switch event {
+        case .sessionEvent(let sessionEvent):
+            switch sessionEvent {
+            case .started(let gameState):
+                self.gameSessions.insert(gameState.id)
+            case .ended(let gameState):
+                self.gameSessions.remove(gameState.id)
+                self.completedSessions.append(gameState)
+            }
+        }
+    }
+    
     private func findOpponent(for player: NetworkPlayer, info: Player) {
         self.findOpponentTasks[info.playerId] = Task {
             defer { self.findOpponentTasks.removeValue(forKey: info.playerId) }
@@ -60,10 +86,12 @@ distributed public actor GameLobby: ClusterSingleton {
             let gameSession = try await GameSession(
                 actorSystem: self.actorSystem,
                 lobby: self,
+                sessionId: UUID(),
                 playerOne: player,
                 playerTwo: opponent
             )
-            self.gameSessions.insert(gameSession)
+            let state = try await gameSession.getCurrentInfo()
+            try await self.emit(event: .sessionEvent(.started(state)))
             try await player.sessionStarted(gameSession)
             try await opponent.sessionStarted(gameSession)
         }
@@ -89,8 +117,8 @@ distributed public actor GameLobby: ClusterSingleton {
     
     /// As a session completes, remove it from the active game sessions
     distributed func sessionCompleted(_ session: GameSession) async throws {
-        self.gameSessions.remove(session)
         let info = try await session.getCurrentInfo()
+        try await self.emit(event: .sessionEvent(.ended(info)))
         self.completedSessions.append(info)
         let sessionPlayers = try await session.players
         guard
